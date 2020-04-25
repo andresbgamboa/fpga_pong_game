@@ -1,0 +1,327 @@
+
+-- ENGR 378 San Francisco State University SPRING 2019
+-- VGA Lab 7
+-- Andres Gamboa and Ronald Gaines
+-- This code was written for a computer monitor with a 1280 by 1024 resolution (60 fps) ----------------------------------------------------------------------------------
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL; use IEEE.STD_LOGIC_ARITH.ALL;
+entity VGAInterface is Port ( CLOCK_50
+VGA_R
+VGA_G
+VGA_B VGA_HS VGA_VS VGA_BLANK_N VGA_CLK VGA_SYNC_N KEY
+SW HEX0 HEX1 HEX2 HEX3 HEX4 HEX5 HEX6 HEX7 LEDR LEDG
+end VGAInterface; architecture Behavioral
+: in STD_LOGIC;
+: out STD_LOGIC_VECTOR (7 downto 0); : out STD_LOGIC_VECTOR (7 downto 0); : out STD_LOGIC_VECTOR (7 downto 0); : out STD_LOGIC;
+: out STD_LOGIC;
+: out STD_LOGIC;
+: out STD_LOGIC; : out STD_LOGIC;
+: in STD_LOGIC_VECTOR (3 downto 0);
+: in STD_LOGIC_VECTOR (17 downto 0); : out STD_LOGIC_VECTOR (6 downto 0);
+: out STD_LOGIC_VECTOR (6 downto 0);
+: out STD_LOGIC_VECTOR (6 downto 0);
+: out STD_LOGIC_VECTOR (6 downto 0);
+: out STD_LOGIC_VECTOR (6 downto 0);
+: out STD_LOGIC_VECTOR (6 downto 0);
+: out STD_LOGIC_VECTOR (6 downto 0);
+: out STD_LOGIC_VECTOR (6 downto 0);
+: out STD_LOGIC_VECTOR (17 downto 0); : out STD_LOGIC_VECTOR (8 downto 0));
+of VGAInterface is
+component VGAFrequency is -- Altera PLL used to generate 108Mhz clock
+PORT ( areset inclk0
+c0 locked
+: in STD_LOGIC;
+: in STD_LOGIC;
+: out STD_LOGIC; : out STD_LOGIC);
+end component;
+component VGAController is -- Module declaration for the VGA controller
+Port ( PixelClock inRed
+inGreen
+: in : in : in
+STD_LOGIC;
+STD_LOGIC_VECTOR (7 downto 0); STD_LOGIC_VECTOR (7 downto 0);
+
+ inBlue outRed outGreen outBlue VertSynchOut HorSynchOut XPosition YPosition
+end component;
+--
+: in STD_LOGIC_VECTOR (7 downto 0); : out STD_LOGIC_VECTOR (7 downto 0); : out STD_LOGIC_VECTOR (7 downto 0); : out STD_LOGIC_VECTOR (7 downto 0);
+: out STD_LOGIC;
+: out STD_LOGIC;
+: out STD_LOGIC_VECTOR (10 downto 0); : out STD_LOGIC_VECTOR (10 downto 0));
+-- Variables for screen resolution 1280 x 1024
+--
+signal XPixelPosition : STD_LOGIC_VECTOR (10 downto 0); signal YPixelPosition : STD_LOGIC_VECTOR (10 downto 0);
+signal redValue signal greenValue signal blueValue
+--
+: STD_LOGIC_VECTOR (7 downto 0) := "00000000"; : STD_LOGIC_VECTOR (7 downto 0) := "00000000"; : STD_LOGIC_VECTOR (7 downto 0) := "00000000";
+-- Freq Mul/Div signals (PLL I/O variables used to generate 108MHz clock) --
+constant resetFreq signal PixelClock signal lockedPLL
+--
+: STD_LOGIC := '0';
+: STD_LOGIC;
+: STD_LOGIC; -- dummy variable
+-- Variables used for displaying the white dot to screen for demo --
+signal XDotPosition signal YDotPosition signal displayPosition
+--
+: STD_LOGIC_VECTOR (10 downto 0) := "01000000000"; : STD_LOGIC_VECTOR (10 downto 0) := "01000000000"; : STD_LOGIC_VECTOR (10 downto 0) := "01000000000";
+-- Variables for slow clock counter to generate a slower clock
+--
+signal slowClockCounter : STD_LOGIC_VECTOR (20 downto 0) :=
+"000000000000000000000";
+signal slowClock : STD_LOGIC;
+--
+-- Vertical and Horizontal Synch Signals
+
+ --
+signal HS : STD_LOGIC; -- horizontal synch signal VS : STD_LOGIC; -- vertical synch
+--
+-- Values for HEX (Segment is low logic level)
+--
+constant zero : STD_LOGIC_VECTOR(6 downto 0) := "1000000"; -- zero constant one : STD_LOGIC_VECTOR(6 downto 0) := "1111001"; -- one constant two : STD_LOGIC_VECTOR(6 downto 0) := "0100100"; -- two constant three : STD_LOGIC_VECTOR(6 downto 0) := "0110000"; -- three constant four : STD_LOGIC_VECTOR(6 downto 0) := "0011001"; -- four constant five : STD_LOGIC_VECTOR(6 downto 0) := "0010010"; -- five constant six : STD_LOGIC_VECTOR(6 downto 0) := "0000010"; -- six constant seven : STD_LOGIC_VECTOR(6 downto 0) := "1111000"; -- seven constant off : STD_LOGIC_VECTOR(6 downto 0) := "1111111"; -- off
+--
+-- Border sizes
+--
+constant midX constant midY constant LeftBorder constant RightBorder constant UpperBorder constant LowerBorder constant BallSize
+--
+: integer := 640; -- center position of x axis : integer := 512; -- center position of y axis : integer := 140; -- size of left border
+: integer := 1140; -- size of right border
+: integer := 112; -- size of upper border
+: integer := 912; -- size of lower border
+: integer := 10; -- size of game ball (20x20)
+-- Ball length
+--
+shared variable LeftBallBorder : integer := midX - BallSize; -- left length from center of x
+axis
+shared variable RightBallBorder : integer := midX + BallSize; -- right lenght from center of x
+axis
+shared variable UpperBallBorder : integer := midY - BallSize; -- upper length from center of
+y axis
+shared variable LowerBallBorder : integer := midY + BallSize; -- lower length from center of
+y axis
+--
+-- Player 1 paddle size --
+
+ faster)
+shared variable P1LeftBorder
+shared variable P1RightBorder
+shared variable P1TopBorder
+shared variable P1LowerBorder : integer := midY + 50; -- lower border of paddle
+--
+-- Player 2 paddle size
+--
+shared variable P2LeftBorder shared variable P2RightBorder shared variable P2TopBorder shared variable P2LowerBorder
+--
+-- Temporary values
+--
+shared variable tempP1Y : integer := 0; shared variable tempP2Y : integer := 0; shared variable tempBallX : integer := 0; shared variable tempBallY : integer := 0;
+--
+-- Score board
+--
+shared variable P1WinCount : integer := 0; shared variable P2WinCount : integer := 0;
+begin
+--
+: integer := LeftBorder + 20; -- left border of paddle
+: integer := LeftBorder + 40; -- right border of paddle
+: integer := midY - 50; -- upper border of paddle
+: integer := RightBorder - 40; -- left border of paddle
+: integer := RightBorder - 20; -- right border of paddle
+: integer := midY - 50;
+: integer := midY + 50;
+-- upper border of paddle -- lower border of paddle
+process (CLOCK_50) -- control process for a large counter to generate a slow clock begin
+if CLOCK_50'event and CLOCK_50 = '1' then slowClockCounter <= slowClockCounter + 15; end if;
+end process;
+slowClock <= slowClockCounter(20); -- slow clock signal (the lower the number the
+-- Displays the value for the X coordinate or Y coordinate to the LEDS depending on switch 1 --
+LEDR(10 downto 0) <= YDotPosition when SW(1) = '1'
+
+ --
+else XDotPosition;
+-- Generates a 108Mhz frequency for the pixel clock using the PLL (The pixel clock determines how much time there is between drawing one pixel at a time)
+--
+VGAFreqModule : VGAFrequency port map (resetFreq, CLOCK_50, PixelClock, lockedPLL);
+--
+-- Module generates the X/Y pixel position on the screen as well as the horizontal and vertical synch signals for monitor with 1280 x 1024 resolution at 60 frams per second
+--
+VGAControl : VGAController port map (PixelClock, redValue, greenValue, blueValue, VGA_R, VGA_G, VGA_B, VS, HS, XPixelPosition, YPixelPosition);
+--
+-- OUTPUT ASSIGNMENTS FOR VGA SIGNALS --
+VGA_VS <= VS;
+VGA_HS <= HS;
+VGA_BLANK_N <= '1'; VGA_SYNC_N <= '1'; VGA_CLK <= PixelClock;
+--
+-- COLOR STATEMENTS
+--
+process (PixelClock)-- MODIFY CODE HERE TO DISPLAY COLORS IN DIFFERENT REGIONS
+ON THE SCREEN
+begin
+if PixelClock'event and PixelClock = '1' then
+--
+-- Border colors
+--
+if (XPixelPosition <= LeftBorder) then
+redValue <= "11111111"; blueValue <= "00000000"; greenValue <= "11111111";
+-- left border (yellow)
+elsif (XPixelPosition >= RightBorder) then -- right border (yellow) redValue <= "11111111";
+blueValue <= "00000000"; greenValue <= "11111111";
+
+ then <= (
+-- Left paddle color
+--
+if (XPixelPosition >= P1LeftBorder) and (XPixelPosition <= P1RightBorder)
+if (YPixelPosition >= (P1TopBorder + tempP1Y)) and (YPixelPosition P1LowerBorder + tempP1Y)) then
+then <= (
+-- Right paddle color
+--
+if (XPixelPosition >= P2LeftBorder) and (XPixelPosition <= P2RightBorder)
+if (YPixelPosition >= (P2TopBorder + tempP2Y)) and (YPixelPosition P2LowerBorder + tempP2Y)) then
+(RightBallBorder+tempBallX)) then
+else
+redValue <= "00000000"; -- center area (black) blueValue <= "00000000";
+greenValue <= "00000000";
+if (YPixelPosition <= UpperBorder) then -- upper border (cyan)
+redValue <= "00000000"; blueValue <= "11111111"; greenValue <= "11111111";
+elsif (YPixelPosition >= LowerBorder) then -- lower border (cyan) redValue <= "00000000";
+end if; end if;
+--
+end if; end if;
+--
+end if; end if;
+--
+blueValue <= "11111111"; greenValue <= "11111111";
+redValue <= "11111111"; blueValue <= "00000000"; greenValue <= "00000000";
+redValue <= "11111111"; blueValue <= "00000000"; greenValue <= "00000000";
+-- Ball color
+--
+if (XPixelPosition >= (LeftBallBorder +tempBallX)) and (XPixelPosition <
+
+ if (YPixelPosition >= (UpperBallBorder+tempBallY)) and (YPixelPosition < (LowerBallBorder+tempBallY)) then
+end if; end process;
+end if; end if;
+redValue <= "11111111"; blueValue <= "11111111"; greenValue <= "11111111";
+process(slowClock,SW(17), KEY) variable state : integer := 3;
+begin
+if slowClock'event and slowClock = '1' then
+HEX0 <= off; -- display score as 0 - 0 initially HEX1 <= off;
+HEX2 <= off;
+HEX3 <= off;
+HEX4 <= zero; HEX5 <= off; HEX6 <= zero; HEX7 <= off;
+--
+-- Game reset
+--
+if SW(0) = '1' then -- flip SW0 to 1 to reset game
+tempBallX := 0; tempBallY := 0; tempP1Y := 0; tempP2Y := 0; P1WinCount := 0; P2WinCount := 0; HEX4 <= zero; HEX6 <= zero; state := 3;
+else -- game start --
+-- Vertical Left Paddle movements
+--
+if KEY(3) = '0' then -- move left paddle upward
+
+ 60) and (tempBallY <= tempP1Y + 60)) then
+if tempP1Y >= -350 then tempP1Y := tempP1Y - 1; end if;
+end if;
+if KEY(2) = '0' then -- move left paddle downward if tempP1Y <= 350 then
+tempP1Y := tempP1Y + 1;
+end if; end if;
+--
+-- Vertical Right Paddle movements
+--
+if KEY(1) = '0' then -- move right paddle upward
+if tempP2Y >= -350 then tempP2Y := tempP2Y - 1; end if;
+end if;
+if KEY(0) = '0' then -- move right paddle downward if tempP2Y <= 350 then
+tempP2Y := tempP2Y + 1;
+end if; end if;
+--
+-- Ball Direction --
+case state is
+when 1 => -- move towards top left direction (state 1)
+if ((tempBallX = -450) and (tempBallY >= tempP1Y -
+state := 2;
+elsif (tempBallY = -390) then
+state := 4;
+elsif (tempBallX = -490) then
+P2WinCount := P2WinCount + 1; tempBallX := 0;
+tempBallY := 0;
+state := 2;
+else
+tempBallX := tempBallX - 1;
+tempBallY := tempBallY - 1; end if;
+
+ 60) and (tempBallY <= tempP2Y + 60)) then
+60) and (tempBallY <= tempP2Y + 60)) then
+60) and (tempBallY <= tempP1Y + 60)) then
+when 2 => -- move towards top right direction (state 2)
+if ((tempBallX = 450) and (tempBallY >= tempP2Y -
+state := 1;
+elsif (tempBallY = -390) then
+state := 3;
+elsif (tempBallX = 490) then
+P1WinCount := P1WinCount + 1; tempBallX := 0;
+tempBallY := 0;
+state := 1;
+else
+tempBallX := tempBallX + 1;
+tempBallY := tempBallY - 1; end if;
+when 3 => -- move towards bottom right direction (state 3) if ((tempBallX = 450) and (tempBallY >= tempP2Y -
+state := 4;
+elsif (tempBallY = 390) then
+state := 2;
+elsif (tempBallX = 490) then
+P1WinCount := P1WinCount + 1; tempBallX := 0;
+tempBallY := 0;
+state := 4;
+else
+tempBallX := tempBallX + 1;
+tempBallY := tempBallY + 1; end if;
+when 4 => -- move towards bottom left direction (state 4)
+if ((tempBallX = -450) and (tempBallY >= tempP1Y -
+state := 3;
+elsif (tempBallY = 390) then
+state := 1;
+elsif (tempBallX = -490) then
+P2WinCount := P2WinCount + 1; tempBallX := 0;
+tempBallY := 0;
+state := 3;
+else
+tempBallX := tempBallX - 1;
+
+ --
+tempBallY := tempBallY + 1; end if;
+when 5 =>
+when others => end case;
+--
+-- When player 1 or 2 wins
+--
+if ((P1WinCount = 7) or (P2WinCount = 7)) then
+state := 5; end if;
+-- Displaying values on score board --
+case P1WinCount is
+when 1 =>
+HEX6 <= one;
+when 2 =>
+HEX6 <= two;
+when 3 =>
+HEX6 <= three;
+when 4 =>
+HEX6 <= four;
+when 5 =>
+HEX6 <= five;
+when 6 =>
+HEX6 <= six;
+when 7 =>
+HEX6 <= seven;
+when others => end case;
+case P2WinCount is when 1 =>
+HEX4 <= one; when 2 =>
+HEX4 <= two; when 3 =>
+HEX4 <= three; when 4 =>
+HEX4 <= four; when 5 =>
+
+end if; end process;
+end Behavioral;
+HEX4 <= five; when 6=>
+HEX4 <= six; when 7 =>
+HEX4 <= seven; when others =>
+end case; end if;
